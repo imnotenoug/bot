@@ -7,7 +7,6 @@ from discord.ext import commands
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Control states mapping usernames to their active commands/settings
 user_controls = {}
 
 @bot.event
@@ -19,23 +18,44 @@ async def on_ready():
         print(e)
 
 
-@bot.tree.command(name="getscript", description="Get the loadstring for the script.")
-async def getscript(interaction: discord.Interaction):
-    loadstring_text = 'loadstring(game:HttpGet("https://awh.filho.wtf/full.lua"))()'
+@bot.tree.command(name="script", description="Get the complete execution loadstring for the script.")
+async def script_command(interaction: discord.Interaction):
+    await interaction.response.defer()
     
-    embed = discord.Embed(
-        title="⚡ AWhub Loadstring",
-        description=f"Here is your loadstring command:\n```lua\n{loadstring_text}\n```",
-        color=0x2B2D31,
+    async with aiohttp.ClientSession() as session:
+        async with session.get("https://awh.filho.wtf/full.lua") as resp:
+            if resp.status != 200:
+                await interaction.followup.send("Failed to retrieve script source from remote server.", ephemeral=True)
+                return
+            script_content = await resp.text()
+
+    file_bytes = discord.File(
+        fp=__import__("io").BytesIO(script_content.encode("utf-8")),
+        filename="AWhub.lua",
     )
-    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+    loadstring_code = 'loadstring(game:HttpGet("https://awh.filho.wtf/full.lua"))()'
+
+    embed = discord.Embed(
+        title="AWhub Execution Suite",
+        description="Loadstring command and source file ready for deployment.",
+        color=0x1E1F22,
+    )
+    embed.add_field(
+        name="Loadstring",
+        value=f"```lua\n{loadstring_code}\n```",
+        inline=False
+    )
+    embed.set_footer(text="Mobile users can download the attached file.")
+
+    await interaction.followup.send(embed=embed, file=file_bytes)
 
 
-@bot.tree.command(name="farm", description="Start or stop the auto-farm for a specific user.")
-@app_commands.describe(username="Roblox username", action="Choose start or stop")
+@bot.tree.command(name="farm", description="Toggle the automated farming loop for a user.")
+@app_commands.describe(username="Target Roblox username", action="Execution state")
 @app_commands.choices(action=[
-    app_commands.Choice(name="Start", value="start"),
-    app_commands.Choice(name="Stop", value="stop")
+    app_commands.Choice(name="Enable", value="start"),
+    app_commands.Choice(name="Disable", value="stop")
 ])
 async def farm_control(interaction: discord.Interaction, username: str, action: app_commands.Choice[str]):
     key = username.strip().lower()
@@ -43,46 +63,61 @@ async def farm_control(interaction: discord.Interaction, username: str, action: 
         user_controls[key] = {}
     user_controls[key]["farm"] = (action.value == "start")
 
-    status = "🟢 Started" if action.value == "start" else "🔴 Stopped"
-    embed = discord.Embed(title="Farm Control", description=f"Farm for **{username}** is now **{status}**.", color=0x00D26A if action.value == "start" else 0xED4245)
+    state_desc = "Operational" if action.value == "start" else "Suspended"
+    embed = discord.Embed(
+        title="Configuration Updated",
+        description=f"Auto-farm parameters modified for target: **{username}**",
+        color=0x23A55A if action.value == "start" else 0xF23F43
+    )
+    embed.add_field(name="Target User", value=username, inline=True)
+    embed.add_field(name="Status", value=state_desc, inline=True)
+
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-@bot.tree.command(name="serverhop", description="Trigger a server hop command for a specific user.")
-@app_commands.describe(username="Roblox username")
+@bot.tree.command(name="serverhop", description="Force an immediate server hop sequence.")
+@app_commands.describe(username="Target Roblox username")
 async def serverhop_command(interaction: discord.Interaction, username: str):
     key = username.strip().lower()
     if key not in user_controls:
         user_controls[key] = {}
     user_controls[key]["serverhop"] = True
 
-    embed = discord.Embed(title="Server Hop Triggered", description=f"Server hop signal sent for **{username}**.", color=0x3498DB)
+    embed = discord.Embed(
+        title="Command Dispatched",
+        description=f"Server migration signal queued for **{username}**.",
+        color=0x5865F2
+    )
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-@bot.tree.command(name="fling", description="Trigger a player fling action for a specific user.")
-@app_commands.describe(username="Roblox username")
+@bot.tree.command(name="fling", description="Execute target elimination protocol.")
+@app_commands.describe(username="Target Roblox username")
 async def fling_command(interaction: discord.Interaction, username: str):
     key = username.strip().lower()
     if key not in user_controls:
         user_controls[key] = {}
     user_controls[key]["fling"] = True
 
-    embed = discord.Embed(title="Fling Triggered", description=f"Fling command queued for **{username}**.", color=0xE67E22)
+    embed = discord.Embed(
+        title="Command Dispatched",
+        description=f"Fling routine initialized for **{username}**.",
+        color=0xFAA61A
+    )
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-@bot.tree.command(name="autoreset", description="Toggle auto-reset options for a user.")
-@app_commands.describe(username="Roblox username", mode="Select mode", state="Enable or Disable")
+@bot.tree.command(name="autoreset", description="Configure automatic round resets based on assigned roles.")
+@app_commands.describe(username="Target Roblox username", mode="Target role category", state="Configuration setting")
 @app_commands.choices(
     mode=[
-        app_commands.Choice(name="Murderer Reset", value="murderer"),
-        app_commands.Choice(name="Sheriff Reset", value="sheriff"),
-        app_commands.Choice(name="Innocent Reset", value="innocent")
+        app_commands.Choice(name="Murderer", value="murderer"),
+        app_commands.Choice(name="Sheriff", value="sheriff"),
+        app_commands.Choice(name="Innocent", value="innocent")
     ],
     state=[
-        app_commands.Choice(name="Enable", value="enable"),
-        app_commands.Choice(name="Disable", value="disable")
+        app_commands.Choice(name="Active", value="enable"),
+        app_commands.Choice(name="Inactive", value="disable")
     ]
 )
 async def autoreset_command(interaction: discord.Interaction, username: str, mode: app_commands.Choice[str], state: app_commands.Choice[str]):
@@ -94,20 +129,28 @@ async def autoreset_command(interaction: discord.Interaction, username: str, mod
     is_enabled = (state.value == "enable")
     user_controls[key][setting_key] = is_enabled
 
-    embed = discord.Embed(title="Auto-Reset Config", description=f"**{mode.name}** for **{username}** is now **{state.name}**.", color=0x9B59B6)
+    embed = discord.Embed(
+        title="Parameters Updated",
+        description=f"Auto-reset for **{mode.name}** class set to **{state.name.lower()}** on account **{username}**.",
+        color=0xEB459E
+    )
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-@bot.tree.command(name="status", description="Check the current control status flags for a user.")
-@app_commands.describe(username="Roblox username")
+@bot.tree.command(name="status", description="Inspect live telemetry and status flags for a user.")
+@app_commands.describe(username="Target Roblox username")
 async def status_command(interaction: discord.Interaction, username: str):
     key = username.strip().lower()
     data = user_controls.get(key, {})
 
-    embed = discord.Embed(title=f"Status for {username}", color=0x2B2D31)
-    embed.add_field(name="Farm", value="Active" if data.get("farm") else "Inactive", inline=True)
-    embed.add_field(name="Server Hop Flag", value="Pending" if data.get("serverhop") else "Clear", inline=True)
-    embed.add_field(name="Fling Flag", value="Pending" if data.get("fling") else "Clear", inline=True)
+    embed = discord.Embed(
+        title=f"Telemetry: {username}",
+        description="Active runtime state flags retrieved from server memory.",
+        color=0x2B2D31
+    )
+    embed.add_field(name="Auto-Farm", value="Active" if data.get("farm") else "Idle", inline=True)
+    embed.add_field(name="Server Hop", value="Pending" if data.get("serverhop") else "Clear", inline=True)
+    embed.add_field(name="Fling Routine", value="Pending" if data.get("fling") else "Clear", inline=True)
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
