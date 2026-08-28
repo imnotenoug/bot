@@ -51,7 +51,7 @@ async def handle_status(request):
 async def web_server():
   app = web.Application()
   app.router.add_get("/get_status", handle_status)
-  runner = AppRunnerTokenFix = web.AppRunner(app)
+  runner = web.AppRunner(app)
   await runner.setup()
   port = int(os.environ.get("PORT", 8080))
   site = web.TCPSite(runner, "0.0.0.0", port)
@@ -110,7 +110,7 @@ async def script_command(interaction: discord.Interaction):
     name="farm", description="Toggle the automated farming loop for a user."
 )
 @app_commands.describe(
-    username="Target Roblox username", action="Execution state"
+    username="Your exact Roblox username", action="Execution state"
 )
 @app_commands.choices(
     action=[
@@ -130,9 +130,7 @@ async def farm_control(
   embed = discord.Embed(
       title="Configuration Updated",
       description=(
-          "Auto-farm parameters modified for target: **"
-          + username
-          + "**"
+          "Auto-farm parameters modified for target: **" + username + "**"
       ),
       color=0x23A55A if action.value == "start" else 0xF23F43,
   )
@@ -145,7 +143,7 @@ async def farm_control(
 @bot.tree.command(
     name="serverhop", description="Force an immediate server hop sequence."
 )
-@app_commands.describe(username="Target Roblox username")
+@app_commands.describe(username="Your exact Roblox username")
 async def serverhop_command(interaction: discord.Interaction, username: str):
   key = get_or_create_user(username)
   user_controls[key]["serverhop"] = True
@@ -161,7 +159,7 @@ async def serverhop_command(interaction: discord.Interaction, username: str):
 @bot.tree.command(
     name="fling", description="Execute target elimination protocol."
 )
-@app_commands.describe(username="Target Roblox username")
+@app_commands.describe(username="Your exact Roblox username")
 async def fling_command(interaction: discord.Interaction, username: str):
   key = get_or_create_user(username)
   user_controls[key]["fling"] = True
@@ -179,7 +177,7 @@ async def fling_command(interaction: discord.Interaction, username: str):
     description="Configure automatic round resets based on assigned roles.",
 )
 @app_commands.describe(
-    username="Target Roblox username",
+    username="Your exact Roblox username",
     mode="Target role category",
     state="Configuration setting",
 )
@@ -218,37 +216,30 @@ async def autoreset_command(
 @bot.tree.command(
     name="status", description="Inspect live telemetry and status flags for a user."
 )
-@app_commands.describe(username="Target Roblox username")
+@app_commands.describe(username="Your exact Roblox username")
 async def status_command(interaction: discord.Interaction, username: str):
   key = username.strip().lower()
   data = user_controls.get(key, {})
+
+  farm_status = (
+      "Active" if data.get("farm", True) else "Idle"
+  )
+  serverhop_status = "Pending" if data.get("serverhop") else "Clear"
+  fling_status = "Pending" if data.get("fling") else "Clear"
 
   embed = discord.Embed(
       title=f"Telemetry: {username}",
       description="Active runtime state flags retrieved from server memory.",
       color=0x2B2D31,
   )
-  embed.add_field(
-      name="Auto-Farm",
-      value="Active" if data.get("farm", True) else "Idle",
-      inline=True,
-  )
-  embed.add_field(
-      name="Server Hop",
-      value="Pending" if data.get("serverhop") else "Clear",
-      inline=True,
-  )
-  embed.add_field(
-      name="Fling Routine",
-      value="Pending" if data.get("fling") else "Clear",
-      inline=True,
-  )
+  embed.add_field(name="Auto-Farm", value=farm_status, inline=True)
+  embed.add_field(name="Server Hop", value=serverhop_status, inline=True)
+  embed.add_field(name="Fling Routine", value=fling_status, inline=True)
 
   await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
 async def main():
-  # Crucial fix: properly boot up the web server and let the bot run concurrently
   await web_server()
   token = os.getenv("DISCORD_TOKEN")
   if not token:
