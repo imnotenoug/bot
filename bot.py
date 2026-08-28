@@ -4,14 +4,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# Fixed: Removed privileged message content intent to prevent startup errors
 intents = discord.Intents.default()
-
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Store farm states for usernames keyed by lowercase username
-farm_states = {}
-
+# Control states mapping usernames to their active commands/settings
+user_controls = {}
 
 @bot.event
 async def on_ready():
@@ -22,80 +19,101 @@ async def on_ready():
         print(e)
 
 
-@bot.tree.command(name="script", description="Get the modded Roblox script to copy on PC or mobile.")
-async def get_script(interaction: discord.Interaction):
-    await interaction.response.defer()
+@bot.tree.command(name="getscript", description="Get the loadstring for the script.")
+async def getscript(interaction: discord.Interaction):
+    loadstring_text = 'loadstring(game:HttpGet("https://awh.filho.wtf/full.lua"))()'
     
-    # Fetch the script live from your URL
-    async with aiohttp.ClientSession() as session:
-        async with session.get("https://awh.filho.wtf/full.lua") as resp:
-            if resp.status != 200:
-                await interaction.followup.send("Failed to fetch the script from the URL.", ephemeral=True)
-                return
-            roblox_script = await resp.text()
-
-    # Send a text file for mobile users
-    file_bytes = discord.File(
-        fp=__import__("io").BytesIO(roblox_script.encode("utf-8")),
-        filename="script.lua",
-    )
-
     embed = discord.Embed(
-        title="⚡ AWhub Script",
-        description=(
-            "Here is your script! PC users can copy from the code box below, "
-            "and mobile users can download the attached file."
-        ),
+        title="⚡ AWhub Loadstring",
+        description=f"Here is your loadstring command:\n```lua\n{loadstring_text}\n```",
         color=0x2B2D31,
     )
-
-    await interaction.followup.send(embed=embed, file=file_bytes)
-
-    # Chunk the script for easy in-chat copying
-    chunks = [roblox_script[i : i + 1900] for i in range(0, len(roblox_script), 1900)]
-    for chunk in chunks:
-        await interaction.followup.send(f"```lua\n{chunk}\n```", ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-@bot.tree.command(
-    name="farm", description="Start or stop the farm for a specific username."
-)
-@app_commands.describe(
-    username="Your Roblox username",
-    action="Choose whether to start or stop the farm",
-)
+@bot.tree.command(name="farm", description="Start or stop the auto-farm for a specific user.")
+@app_commands.describe(username="Roblox username", action="Choose start or stop")
+@app_commands.choices(action=[
+    app_commands.Choice(name="Start", value="start"),
+    app_commands.Choice(name="Stop", value="stop")
+])
+async def farm_control(interaction: discord.Interaction, username: str, action: app_commands.Choice[str]):
+    key = username.strip().lower()
+    if key not in user_controls:
+        user_controls[key] = {}
+    user_controls[key]["farm"] = (action.value == "start")
+
+    status = "🟢 Started" if action.value == "start" else "🔴 Stopped"
+    embed = discord.Embed(title="Farm Control", description=f"Farm for **{username}** is now **{status}**.", color=0x00D26A if action.value == "start" else 0xED4245)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+
+@bot.tree.command(name="serverhop", description="Trigger a server hop command for a specific user.")
+@app_commands.describe(username="Roblox username")
+async def serverhop_command(interaction: discord.Interaction, username: str):
+    key = username.strip().lower()
+    if key not in user_controls:
+        user_controls[key] = {}
+    user_controls[key]["serverhop"] = True
+
+    embed = discord.Embed(title="Server Hop Triggered", description=f"Server hop signal sent for **{username}**.", color=0x3498DB)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+
+@bot.tree.command(name="fling", description="Trigger a player fling action for a specific user.")
+@app_commands.describe(username="Roblox username")
+async def fling_command(interaction: discord.Interaction, username: str):
+    key = username.strip().lower()
+    if key not in user_controls:
+        user_controls[key] = {}
+    user_controls[key]["fling"] = True
+
+    embed = discord.Embed(title="Fling Triggered", description=f"Fling command queued for **{username}**.", color=0xE67E22)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+
+@bot.tree.command(name="autoreset", description="Toggle auto-reset options for a user.")
+@app_commands.describe(username="Roblox username", mode="Select mode", state="Enable or Disable")
 @app_commands.choices(
-    action=[
-        app_commands.Choice(name="Start", value="start"),
-        app_commands.Choice(name="Stop", value="stop"),
+    mode=[
+        app_commands.Choice(name="Murderer Reset", value="murderer"),
+        app_commands.Choice(name="Sheriff Reset", value="sheriff"),
+        app_commands.Choice(name="Innocent Reset", value="innocent")
+    ],
+    state=[
+        app_commands.Choice(name="Enable", value="enable"),
+        app_commands.Choice(name="Disable", value="disable")
     ]
 )
-async def farm_control(
-    interaction: discord.Interaction, username: str, action: app_commands.Choice[str]
-):
+async def autoreset_command(interaction: discord.Interaction, username: str, mode: app_commands.Choice[str], state: app_commands.Choice[str]):
     key = username.strip().lower()
-    farm_states[key] = action.value == "start"
+    if key not in user_controls:
+        user_controls[key] = {}
+    
+    setting_key = f"reset_{mode.value}"
+    is_enabled = (state.value == "enable")
+    user_controls[key][setting_key] = is_enabled
 
-    status_text = "🟢 Started" if action.value == "start" else "🔴 Stopped"
+    embed = discord.Embed(title="Auto-Reset Config", description=f"**{mode.name}** for **{username}** is now **{state.name}**.", color=0x9B59B6)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
 
-    embed = discord.Embed(
-        title="Farm Control Panel",
-        description=(
-            f"Successfully updated farm status for user **{username}**."
-        ),
-        color=0x00D26A if action.value == "start" else 0xED4245,
-    )
-    embed.add_field(name="Target Username", value=f"`{username}`", inline=True)
-    embed.add_field(name="New Status", value=status_text, inline=True)
+
+@bot.tree.command(name="status", description="Check the current control status flags for a user.")
+@app_commands.describe(username="Roblox username")
+async def status_command(interaction: discord.Interaction, username: str):
+    key = username.strip().lower()
+    data = user_controls.get(key, {})
+
+    embed = discord.Embed(title=f"Status for {username}", color=0x2B2D31)
+    embed.add_field(name="Farm", value="Active" if data.get("farm") else "Inactive", inline=True)
+    embed.add_field(name="Server Hop Flag", value="Pending" if data.get("serverhop") else "Clear", inline=True)
+    embed.add_field(name="Fling Flag", value="Pending" if data.get("fling") else "Clear", inline=True)
 
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
-# Run the bot using the token environment variable
 TOKEN = os.getenv("DISCORD_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print(
-        "Error: DISCORD_TOKEN environment variable not set in Railway configuration!"
-    )
+    print("Error: DISCORD_TOKEN environment variable not set in Railway configuration!")
